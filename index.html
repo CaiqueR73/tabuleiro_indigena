@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jogo da Onça Indígena (Adugo)</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      background: #1e3a2f;
+      color: #e0d4b8;
+      margin: 0;
+      padding: 20px;
+    }
+    h1 { margin: 10px 0 5px; }
+    #board {
+      display: inline-grid;
+      gap: 8px;
+      background: #8b5a2b;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 0 20px rgba(0,0,0,0.6);
+    }
+    .point {
+      width: 50px;
+      height: 50px;
+      background: #e0d4b8;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      cursor: pointer;
+      user-select: none;
+      box-shadow: inset 0 4px 8px rgba(0,0,0,0.3);
+    }
+    .point:hover { background: #f4e8c1; }
+    .onca { background: #b71c1c !important; color: white; }
+    .cachorro { background: #37474f !important; color: white; }
+    .selected { box-shadow: 0 0 0 5px yellow; }
+    #info {
+      margin: 20px;
+      font-size: 1.2em;
+    }
+    button {
+      margin-top: 10px;
+      padding: 10px 20px;
+      font-size: 1em;
+      background: #8b5a2b;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    button:hover { background: #a67c5d; }
+  </style>
+</head>
+<body>
+  <h1>Jogo da Onça Indígena</h1>
+  <p><strong>Onça (vermelha) × Cachorros (azul escuro)</strong></p>
+  <div id="board"></div>
+  <div id="info">Vez da <span id="turn">Onça</span></div>
+  <button onclick="resetGame()">Novo Jogo</button>
+
+  <script>
+    // Posições do tabuleiro (17 pontos)
+    const positions = [
+      {id:0, x:0, y:0}, {id:1, x:1, y:0}, {id:2, x:2, y:0}, {id:3, x:3, y:0}, {id:4, x:4, y:0},
+      {id:5, x:0, y:1}, {id:6, x:1, y:1}, {id:7, x:2, y:1}, {id:8, x:3, y:1}, {id:9, x:4, y:1},
+      {id:10,x:0, y:2}, {id:11,x:1, y:2}, {id:12,x:2, y:2}, {id:13,x:3, y:2}, {id:14,x:4, y:2},
+      {id:15,x:2, y:3}, // ponta do triângulo
+      {id:16,x:2, y:4}  // ponta inferior
+    ];
+
+    // Ligações (movimentos válidos)
+    const connections = {
+      0: [1,5], 1: [0,2,6], 2: [1,3,7,12], 3: [2,4,8], 4: [3,9],
+      5: [0,6,10], 6: [1,5,7,11], 7: [2,6,8,12], 8: [3,7,9,13], 9: [4,8,14],
+      10:[5,11], 11:[6,10,12], 12:[2,7,11,13,15], 13:[8,12,14], 14:[9,13],
+      15:[12,16], 16:[15]
+    };
+
+    let board = {}; // id -> 'onca' | 'cachorro' | null
+    let selected = null;
+    let currentPlayer = 'onca'; // 'onca' ou 'cachorro'
+    let captured = 0;
+
+    const boardEl = document.getElementById('board');
+    const infoTurn = document.getElementById('turn');
+
+    function createBoard() {
+      boardEl.innerHTML = '';
+      boardEl.style.gridTemplateColumns = 'repeat(5, 1fr)';
+      
+      // Criar pontos
+      positions.forEach(pos => {
+        const div = document.createElement('div');
+        div.className = 'point';
+        div.dataset.id = pos.id;
+        div.onclick = () => handleClick(pos.id);
+        boardEl.appendChild(div);
+      });
+    }
+
+    function initGame() {
+      board = {};
+      captured = 0;
+      currentPlayer = 'onca';
+      
+      // Onça no centro
+      board[12] = 'onca';
+      
+      // Cachorros nas posições iniciais
+      [0,1,2,3,4,5,6,7,8,9,10,11,13,14].forEach(id => {
+        board[id] = 'cachorro';
+      });
+      
+      updateBoard();
+      updateInfo();
+    }
+
+    function updateBoard() {
+      document.querySelectorAll('.point').forEach(el => {
+        const id = parseInt(el.dataset.id);
+        el.className = 'point';
+        if (board[id] === 'onca') el.classList.add('onca');
+        if (board[id] === 'cachorro') el.classList.add('cachorro');
+      });
+    }
+
+    function updateInfo() {
+      infoTurn.textContent = currentPlayer === 'onca' ? 'Onça' : 'Cachorros';
+      infoTurn.style.color = currentPlayer === 'onca' ? '#b71c1c' : '#37474f';
+    }
+
+    function handleClick(id) {
+      if (selected === null) {
+        // Selecionar peça
+        if (board[id] === currentPlayer) {
+          selected = id;
+          document.querySelector(`.point[data-id="${id}"]`).classList.add('selected');
+        }
+      } else {
+        if (selected === id) {
+          // Desselecionar
+          selected = null;
+          updateBoard();
+          return;
+        }
+
+        if (isValidMove(selected, id)) {
+          movePiece(selected, id);
+        } else {
+          alert("Movimento inválido!");
+        }
+        selected = null;
+        updateBoard();
+      }
+    }
+
+    function isValidMove(from, to) {
+      if (board[to]) return false; // casa ocupada
+      
+      // Movimento simples
+      if (connections[from].includes(to)) {
+        return true;
+      }
+      
+      // Salto da onça
+      if (board[from] === 'onca') {
+        const mid = getMidPoint(from, to);
+        if (mid !== null && board[mid] === 'cachorro' && connections[from].includes(mid) && connections[mid].includes(to)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function getMidPoint(a, b) {
+      // Calcula ponto médio aproximado (simplificado)
+      for (let mid of connections[a]) {
+        if (connections[mid].includes(b)) return mid;
+      }
+      return null;
+    }
+
+    function movePiece(from, to) {
+      const piece = board[from];
+      board[to] = piece;
+      delete board[from];
+
+      let capture = false;
+
+      // Captura (apenas onça)
+      if (piece === 'onca') {
+        const mid = getMidPoint(from, to);
+        if (mid !== null && board[mid] === 'cachorro') {
+          delete board[mid];
+          captured++;
+          capture = true;
+        }
+      }
+
+      // Verifica vitória
+      if (captured >= 5) {
+        setTimeout(() => alert("🏆 A Onça venceu! Comeu 5 cachorros!"), 100);
+        return;
+      }
+
+      // Troca de turno
+      currentPlayer = currentPlayer === 'onca' ? 'cachorro' : 'onca';
+      updateInfo();
+
+      // Verifica se onça está encurralada
+      if (currentPlayer === 'cachorro' && !hasValidMoves('onca')) {
+        setTimeout(() => alert("🏆 Os Cachorros venceram! Encurralaram a Onça!"), 100);
+      }
+    }
+
+    function hasValidMoves(player) {
+      for (let from in board) {
+        if (board[from] !== player) continue;
+        for (let to of connections[from] || []) {
+          if (!board[to] || (player === 'onca' && isValidMove(from, to))) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    function resetGame() {
+      if (confirm("Iniciar novo jogo?")) {
+        initGame();
+      }
+    }
+
+    // Inicializar
+    createBoard();
+    initGame();
+  </script>
+</body>
+</html>
